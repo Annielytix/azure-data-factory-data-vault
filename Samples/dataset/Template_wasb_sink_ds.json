@@ -1,0 +1,26 @@
+{
+	"name": "Template_wasb_sink_ds",
+	"properties": {
+		"description": "Connection to your destination data store.",
+		"linkedServiceName": {
+			"referenceName": "AzureBlobStorage_LS",
+			"type": "LinkedServiceReference"
+		},
+		"parameters": {
+			"folder": {
+				"type": "String"
+			}
+		},
+		"folder": {
+			"name": "Template Datasets"
+		},
+		"type": "AzureBlob",
+		"typeProperties": {
+			"fileName": "",
+			"folderPath": {
+				"value": "@dataset().folder",
+				"type": "Expression"
+			}
+		}
+	}
+}

@@ -1,0 +1,312 @@
+{
+	"name": "ValidationActivity_CopyDeleteFiles",
+	"properties": {
+		"activities": [
+			{
+				"name": "EnumerateFolderList",
+				"description": "Scan the file path on your source ADLS and get the container list.",
+				"type": "GetMetadata",
+				"policy": {
+					"timeout": "7.00:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "validation_adls_source_ds",
+						"type": "DatasetReference",
+						"parameters": {
+							"FileFolder": {
+								"value": "@pipeline().parameters.SourceFilePath",
+								"type": "Expression"
+							}
+						}
+					},
+					"fieldList": [
+						"childItems"
+					]
+				}
+			},
+			{
+				"name": "ForEachFolder",
+				"description": "Get the folder list from Metadata activity and then iterates each of them to Copy activity.",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "EnumerateFolderList",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('EnumerateFolderList').output.childItems",
+						"type": "Expression"
+					},
+					"batchCount": 4,
+					"activities": [
+						{
+							"name": "CopyOneFolder",
+							"description": "Copy each folder from source ADLS to destination ADLS folder.",
+							"type": "Copy",
+							"policy": {
+								"timeout": "7.00:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [
+								{
+									"name": "Source",
+									"value": "@concat(pipeline().parameters.SourceFilePath,'/',item().name)"
+								},
+								{
+									"name": "Destination",
+									"value": "@concat(pipeline().parameters.DestinationFilePath,'/',item().name)"
+								}
+							],
+							"typeProperties": {
+								"source": {
+									"type": "AzureDataLakeStoreSource",
+									"recursive": true
+								},
+								"sink": {
+									"type": "AzureDataLakeStoreSink"
+								},
+								"enableStaging": false,
+								"dataIntegrationUnits": 0
+							},
+							"inputs": [
+								{
+									"referenceName": "validation_adls_source_ds",
+									"type": "DatasetReference",
+									"parameters": {
+										"FileFolder": {
+											"value": "@concat(pipeline().parameters.SourceFilePath,'/',item().name)",
+											"type": "Expression"
+										}
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "validation_adls_source_ds",
+									"type": "DatasetReference",
+									"parameters": {
+										"FileFolder": {
+											"value": "@concat(pipeline().parameters.DestinationFilePath,'/',item().name)",
+											"type": "Expression"
+										}
+									}
+								}
+							]
+						},
+						{
+							"name": "DeleteFiles",
+							"type": "Delete",
+							"dependsOn": [
+								{
+									"activity": "CopyOneFolder",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "7.00:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"typeProperties": {
+								"dataset": {
+									"referenceName": "validation_adls_source_ds",
+									"type": "DatasetReference",
+									"parameters": {
+										"FileFolder": {
+											"value": "@concat(pipeline().parameters.SourceFilePath,'/',item().name)",
+											"type": "Expression"
+										}
+									}
+								},
+								"recursive": true,
+								"logStorageSettings": {
+									"linkedServiceName": {
+										"referenceName": "AzureBlobStorage_LS",
+										"type": "LinkedServiceReference"
+									},
+									"path": "logging"
+								},
+								"enableLogging": true
+							}
+						}
+					]
+				}
+			},
+			{
+				"name": "Email Notification",
+				"type": "WebActivity",
+				"dependsOn": [
+					{
+						"activity": "Run Calculations",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "Check if Folder empty",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "7.00:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"typeProperties": {
+					"url": "https://prod-31.eastus.logic.azure.com:443/workflows/001cc7857fac4b41bd535a8ca3ec9e3e/triggers/manual/paths/invoke?api-version=2016-10-01&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=f-qhwimTZz8R7fgJ3nz5VTqx0sPOD4akHLeBIDDt5Mg",
+					"method": "POST",
+					"headers": {
+						"Content-Type": "application/json"
+					},
+					"body": {
+						"DataFactoryName": "@{pipeline().DataFactory}",
+						"PipelineName": "@{pipeline().Pipeline}",
+						"Message": "Copy Operation finished.",
+						"EmailTo": "@pipeline().parameters.par_email_address"
+					}
+				}
+			},
+			{
+				"name": "Check If Folder exists",
+				"type": "Validation",
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "validation_adls_source_ds",
+						"type": "DatasetReference",
+						"parameters": {
+							"FileFolder": {
+								"value": "@pipeline().parameters.SourceFilePath",
+								"type": "Expression"
+							}
+						}
+					},
+					"timeout": "7.00:00:00",
+					"sleep": 1
+				}
+			},
+			{
+				"name": "Check if File exists",
+				"type": "Validation",
+				"dependsOn": [
+					{
+						"activity": "Check If Folder exists",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "validation_adls_source_ds",
+						"type": "DatasetReference",
+						"parameters": {
+							"FileFolder": {
+								"value": "@pipeline().parameters.SourceFilePath",
+								"type": "Expression"
+							}
+						}
+					},
+					"timeout": "7.00:00:00",
+					"sleep": 1,
+					"childItems": true
+				}
+			},
+			{
+				"name": "Check if Folder empty",
+				"type": "Validation",
+				"dependsOn": [
+					{
+						"activity": "ForEachFolder",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"typeProperties": {
+					"dataset": {
+						"referenceName": "validation_adls_source_ds",
+						"type": "DatasetReference",
+						"parameters": {
+							"FileFolder": {
+								"value": "@pipeline().parameters.SourceFilePath",
+								"type": "Expression"
+							}
+						}
+					},
+					"timeout": "7.00:00:00",
+					"sleep": 1,
+					"childItems": false
+				}
+			},
+			{
+				"name": "Run Calculations",
+				"type": "DatabricksNotebook",
+				"dependsOn": [
+					{
+						"activity": "Check if File exists",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "ForEachFolder",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "7.00:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"typeProperties": {
+					"notebookPath": "/Notebooks/SampleNotebookScala"
+				},
+				"linkedServiceName": {
+					"referenceName": "azuredatabricks_bigdata_ls",
+					"type": "LinkedServiceReference"
+				}
+			}
+		],
+		"parameters": {
+			"SourceFilePath": {
+				"type": "String",
+				"defaultValue": "/storesales"
+			},
+			"DestinationFilePath": {
+				"type": "String",
+				"defaultValue": "/storesales-staging"
+			},
+			"par_email_address": {
+				"type": "String",
+				"defaultValue": "rimayev@hotmail.com"
+			}
+		},
+		"folder": {
+			"name": "Validation Activity"
+		}
+	}
+}

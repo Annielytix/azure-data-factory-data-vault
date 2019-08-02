@@ -1,0 +1,26 @@
+{
+	"name": "ASQL_DV_SAT_InternetSales_Latest",
+	"properties": {
+		"linkedServiceName": {
+			"referenceName": "AzureSqlDatabase_DV_LS",
+			"type": "LinkedServiceReference"
+		},
+		"folder": {
+			"name": "DataVaultTesting"
+		},
+		"type": "AzureSqlTable",
+		"schema": [
+			{
+				"name": "LINK_InternetSales_HK",
+				"type": "varchar"
+			},
+			{
+				"name": "SAT_InternetSales_HDIFF",
+				"type": "varchar"
+			}
+		],
+		"typeProperties": {
+			"tableName": "[dbo].[vw_latest_sat_internetsales]"
+		}
+	}
+}
